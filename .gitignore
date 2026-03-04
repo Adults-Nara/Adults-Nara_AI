@@ -1,3 +1,19 @@
+# ── Project-specific ──
+# Whisper 모델 캐시
+.cache/
+huggingface/
+
+# 임시 영상/자막 파일
+/tmp/
+*.mp4
+*.vtt
+
+# IDE
+.idea/
+.vscode/
+
+# ── Python defaults ──
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
