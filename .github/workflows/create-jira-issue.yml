@@ -1,0 +1,165 @@
+name: Create Jira issue
+
+on:
+  issues:
+    types: [opened]
+
+# 브랜치 생성(push) + 이슈 제목/댓글 업데이트를 하려면 write 필요
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  create-issue:
+    name: Create Jira issue
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1) Jira 로그인
+      - name: Login to Jira
+        uses: atlassian/gajira-login@v3
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+
+      # 2) 레포 체크아웃 (ref 미지정 시 default branch)
+      - name: Checkout repository (default branch)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 3) Issue Form Parser (템플릿 기반 입력값 파싱)
+      - name: Issue Parser (Issue Form)
+        uses: stefanbuck/github-issue-parser@v3
+        id: issue-parser
+        with:
+          template-path: .github/ISSUE_TEMPLATE/issue-form.yml
+
+      # 4) 디버그 로그 (script injection 안전 예시대로 파일을 cat)
+      - name: Log Issue Parser outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "parentKey: '${{ steps.issue-parser.outputs.issueparser_parentKey }}'"
+          echo "branch:    '${{ steps.issue-parser.outputs.issueparser_branch }}'"
+          echo "------ issue-parser-result.json ------"
+          cat "${HOME}/issue-parser-result.json"
+
+      # 5) Markdown -> Jira 문법 변환
+      - name: Convert markdown to Jira Syntax
+        uses: peter-evans/jira2md@v1
+        id: md2jira
+        with:
+          input-text: |
+            ### GitHub Issue Link
+            - ${{ github.event.issue.html_url }}
+
+            ${{ github.event.issue.body }}
+          mode: md2jira
+
+      # 6) parent가 비어있으면 Jira에서 400 날 수 있으니, "조건부 fields"
+      - name: Build Jira fields JSON (optional parent)
+        id: fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARENT="${{ steps.issue-parser.outputs.issueparser_parentKey }}"
+
+          if [ -n "$PARENT" ]; then
+            echo "Using parent: $PARENT"
+            {
+              echo 'FIELDS<<EOF'
+              echo "{\"parent\":{\"key\":\"$PARENT\"}}"
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "No parent provided -> fields will be empty"
+            {
+              echo 'FIELDS<<EOF'
+              echo "{}"
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # 7) Jira 이슈 생성
+      - name: Create Jira Issue
+        id: create
+        uses: atlassian/gajira-create@v3
+        with:
+          project: ASN
+          issuetype: Task
+          summary: "${{ github.event.issue.title }}"
+          description: "${{ steps.md2jira.outputs.output-text }}"
+          fields: "${{ steps.fields.outputs.FIELDS }}"
+
+      - name: Log created issue
+        shell: bash
+        run: |
+          echo "Jira Issue created: ${{ steps.create.outputs.issue }}"
+
+      # 8) 브랜치 생성 + push
+      # - issueparser_branch(예: "billing (kafka)") 같이 괄호/공백 있어도 안전하게 slugify
+      # - 실제 생성한 브랜치명을 output으로 넘겨서 댓글/표기와 100% 일치
+      - name: Create branch with Ticket number (keep prefix like feature/)
+        id: branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ISSUE_KEY="${{ steps.create.outputs.issue }}"
+          RAW_BRANCH="${{ steps.issue-parser.outputs.issueparser_branch }}"
+
+          # 1) 사용자가 입력 안 하면 기본값: "ISSUE_KEY"
+          if [ -z "${RAW_BRANCH}" ]; then
+            BRANCH_NAME="${ISSUE_KEY}"
+          else
+            # 2) 위험한 문자 제거/정리 (슬래시는 허용)
+            # - 공백 -> -
+            # - 허용: a-zA-Z0-9 / . _ -
+            SAFE="$(echo "${RAW_BRANCH}" \
+              | tr '[:upper:]' '[:lower:]' \
+              | sed -E 's/[[:space:]]+/-/g' \
+              | sed -E 's/[^a-z0-9\/._-]+/-/g' \
+              | sed -E 's/\/+/\//g; s/^\/+|\/+$//g' )"
+
+            # 3) prefix/type 분리: feature/... 이면 feature/ 뒤에 티켓키 삽입
+            if echo "${SAFE}" | grep -q '/'; then
+              PREFIX="${SAFE%%/*}"          # feature
+              REST="${SAFE#*/}"            # user/login
+              REST_SLUG="$(echo "${REST}" | sed -E 's/\/+/-/g')"  # user-login
+              BRANCH_NAME="${PREFIX}/${ISSUE_KEY}-${REST_SLUG}"
+            else
+              # 슬래시 없는 경우는 그냥 "ISSUE_KEY-입력값"
+              BRANCH_NAME="${ISSUE_KEY}-${SAFE}"
+            fi
+          fi
+
+          echo "branch_name=${BRANCH_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Branch to create: ${BRANCH_NAME}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "${BRANCH_NAME}"
+          git push -u origin "${BRANCH_NAME}"
+
+      # 9) GitHub Issue 제목에 Jira 키 붙이기
+      - name: Update issue title with Jira key
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: update-issue
+          token: ${{ github.token }}
+          issue-number: ${{ github.event.issue.number }}
+          title: "[${{ steps.create.outputs.issue }}] ${{ github.event.issue.title }}"
+
+      # 10) GitHub Issue에 Jira 링크 댓글 달기
+      - name: Add comment with Jira issue link
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: create-comment
+          token: ${{ github.token }}
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            ✅ Jira Issue Created: [${{ steps.create.outputs.issue }}](${{ secrets.JIRA_BASE_URL }}/browse/${{ steps.create.outputs.issue }})
+            🌿 Branch Created: `${{ steps.branch.outputs.branch_name }}`

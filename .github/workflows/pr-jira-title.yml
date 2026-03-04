@@ -1,0 +1,137 @@
+name: PR Jira Key Prefix
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  prefix-jira-key:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prefix Jira key to PR title
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pull_number = pr.number;
+
+            const title = pr.title ?? "";
+            const body = pr.body ?? "";
+            const branch = pr.head?.ref ?? "";
+
+            const keyRegex = /([A-Z][A-Z0-9]+-\d+)/;
+            const findKey = (text) => {
+              const m = (text || "").match(keyRegex);
+              return m ? m[1] : null;
+            };
+
+            const already = findKey(title);
+            if (already) {
+              core.info(`Skip: title already has key (${already})`);
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: pull_number,
+                  name: "needs-jira-key",
+                });
+              } catch (e) {}
+              return;
+            }
+
+            let key = findKey(body);
+            if (!key) key = findKey(branch);
+
+            if (key) {
+              const newTitle = `[${key}] ${title}`.replace(/\s+/g, " ").trim();
+
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number,
+                title: newTitle,
+              });
+
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: pull_number,
+                  name: "needs-jira-key",
+                });
+              } catch (e) {}
+
+              core.info(`Updated PR title => ${newTitle}`);
+              return;
+            }
+
+            const labelName = "needs-jira-key";
+
+            async function ensureLabel() {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: labelName });
+              } catch (e) {
+                if (e.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name: labelName,
+                    color: "B60205",
+                    description: "PR에 Jira Ticket Key가 필요합니다.",
+                  });
+                } else {
+                  throw e;
+                }
+              }
+            }
+
+            await ensureLabel();
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: pull_number,
+              labels: [labelName],
+            });
+
+            const marker = "<!-- jira-key-bot -->";
+
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: pull_number,
+              per_page: 100,
+            });
+
+            const alreadyCommented = comments.data.some((c) =>
+              (c.body || "").includes(marker)
+            );
+
+            if (!alreadyCommented) {
+              const commentBody = [
+                marker,
+                "Jira 티켓 키를 찾지 못했어요.",
+                "",
+                "✅ 아래 중 하나로 Jira 키를 넣어주세요.",
+                "1) PR 본문에 `Jira Ticket: ASN-2` 같은 줄 추가",
+                "2) 브랜치명을 `feature/ASN-2-...`, `fix/ASN-2-...` 형태로 생성",
+                "",
+                "키가 확인되면 PR 제목이 자동으로 `[ASN-2] ...` 형태로 갱신됩니다.",
+              ].join("\n");
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull_number,
+                body: commentBody,
+              });
+            }

@@ -1,0 +1,50 @@
+name: Close Jira issue
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  close-jira:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Login to Jira
+        uses: atlassian/gajira-login@v3
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+
+      - name: Extract Jira key
+        id: extract
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TITLE="${{ github.event.issue.title }}"
+          BODY="${{ github.event.issue.body }}"
+
+          # 제목/본문에서 Jira Key 추출 (예: ASN-10)
+          KEY=$(printf "%s %s" "$TITLE" "$BODY" \
+            | tr '\n' ' ' \
+            | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' \
+            | head -n 1 || true)
+
+          echo "JIRA_KEY=$KEY" >> "$GITHUB_ENV"
+          echo "Extracted JIRA_KEY='$KEY'"
+
+      - name: Skip if no Jira key found
+        if: env.JIRA_KEY == ''
+        run: echo "No Jira key found in issue title/body. Skipping."
+
+      - name: Transition Jira issue to Done
+        if: env.JIRA_KEY != ''
+        uses: atlassian/gajira-transition@v3
+        with:
+          issue: ${{ env.JIRA_KEY }}
+          transitionId: 31
