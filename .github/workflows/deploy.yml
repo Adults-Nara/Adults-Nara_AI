@@ -5,7 +5,7 @@ on:
     branches: [main]
 env:
   AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: asn-ai-server
+  ECR_REPOSITORY: asn/ai-server
   EC2_INSTANCE_ID: i-09937cf6b52a6b31a  # AI Server EC2 인스턴스 ID
 jobs:
   deploy:
