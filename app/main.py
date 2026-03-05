@@ -2,10 +2,17 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from pydantic import BaseModel
 
 from app.config import get_settings
+from app.services.llm_service import extract_tags_and_summary
 
 logger = logging.getLogger(__name__)
+
+
+# 테스트용 요청 모델
+class TestLlmRequest(BaseModel):
+    transcript: str  # 테스트할 음성 텍스트
 
 
 @asynccontextmanager
@@ -38,6 +45,13 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check():
         return {"status": "ok"}
+
+    # 임시 테스트 엔드포인트
+    @app.post("/test/llm")
+    async def test_llm(request: TestLlmRequest):
+        """텍스트를 넣으면 GPT-4o-mini가 요약+태그를 반환"""
+        result = extract_tags_and_summary(settings, request.transcript)
+        return result
 
     return app
 
