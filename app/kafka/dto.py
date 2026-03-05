@@ -7,9 +7,7 @@ from pydantic import BaseModel
 
 # core-api → ai-server (토픽: video-ai-analysis-requested)
 class VideoAiAnalysisRequestedEvent(BaseModel):
-    videoId: int       # 영상 ID
-    s3Bucket: str      # S3 버킷명
-    s3Key: str         # S3 객체 키 (예: "videos/123/source/source.mp4")
+    videoId: int       # 영상 ID (S3 경로: videos/{videoId}/source/source.mp4)
 
 
 # ai-server → core-api (토픽: video-ai-analysis-completed)
@@ -19,5 +17,5 @@ class VideoAiAnalysisCompletedEvent(BaseModel):
     aiTags: list[str] = []               # AI 추출 태그
     summary: str = ""                    # AI 요약
     subtitleUrl: str = ""                # S3 자막 경로
-    embedding: list[float] = []          # 1536차원 벡터 임베딩 (core-api가 ES에 저장)
+    embedding: list[float] = []          # 384차원 벡터 임베딩 (core-api가 ES에 저장)
     error: str | None = None             # 실패 시 에러 메시지

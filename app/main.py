@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -6,6 +7,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.kafka.consumer import KafkaConsumerService
+from app.kafka.producer import KafkaProducerService
 from app.services.llm_service import extract_tags_and_summary
 from app.services.s3_service import download_video, upload_subtitle
 from app.services.stt_service import transcribe_video, generate_vtt
@@ -27,13 +30,31 @@ class TestPipelineRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI 수명주기: 시작/종료 로직"""
+    """FastAPI 수명주기: Kafka Consumer/Producer 시작 및 종료"""
     settings = get_settings()
-    logger.info("✅ AI 서버 시작")
-    # TODO: Kafka Consumer/Producer 시작
+
+    # Kafka Producer 시작
+    producer = KafkaProducerService(settings)
+    await producer.start()
+
+    # Kafka Consumer 시작 (백그라운드 태스크)
+    consumer = KafkaConsumerService(settings, producer)
+    consumer_task = asyncio.create_task(consumer.start())
+
+    logger.info("✅ AI 서버 시작 (Kafka 연결 완료)")
+
     yield
-    logger.info("🛑 AI 서버 종료")
-    # TODO: Kafka Consumer/Producer 종료
+
+    # 종료
+    logger.info("🛑 서버 종료 중...")
+    await consumer.stop()
+    await producer.stop()
+    consumer_task.cancel()
+    try:
+        await consumer_task
+    except asyncio.CancelledError:
+        pass
+    logger.info("🛑 서버 종료 완료")
 
 
 def create_app() -> FastAPI:
