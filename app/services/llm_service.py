@@ -14,19 +14,16 @@ ALLOWED_TAGS = [
     "먹방", "브이로그", "리뷰", "뷰티", "패션", "게임", "음악", "댄스",
     "스포츠", "여행", "교육", "과학", "기술", "뉴스", "정치", "경제",
     "요리", "건강", "운동", "자동차", "반려동물", "키즈", "ASMR",
-    "인터뷰", "토크쇼", "챌린지", "일상", "힐링", "자기계발",
+    "인터뷰", "토크쇼", "챌린지", "일상", "힐링", "자기개발",
 ]
 
-
+# OpenAI 클라이언트 생성
 def get_openai_client(settings: Settings) -> OpenAI:
-    """OpenAI 클라이언트 생성"""
     return OpenAI(api_key=settings.openai_api_key)
 
-
+# GPT-4o-mini를 사용하여 영상 스크립트에서 요약과 태그를 추출
 def extract_tags_and_summary(settings: Settings, transcript: str) -> dict:
     """
-    GPT-4o-mini를 사용하여 영상 스크립트에서 요약과 태그를 추출
-
     Args:
         settings: 환경변수 설정 객체
         transcript: STT(transcribe_video)로 추출한 전체 음성 텍스트
