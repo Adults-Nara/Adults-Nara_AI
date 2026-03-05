@@ -19,5 +19,5 @@ class VideoAiAnalysisCompletedEvent(BaseModel):
     aiTags: list[str] = []               # AI 추출 태그
     summary: str = ""                    # AI 요약
     subtitleUrl: str = ""                # S3 자막 경로
-    embedding: list[float] = []          # 1536차원 벡터 임베딩 (core-api가 ES에 저장)
+    embedding: list[float] = []          # 384차원 벡터 임베딩 (core-api가 ES에 저장)
     error: str | None = None             # 실패 시 에러 메시지
