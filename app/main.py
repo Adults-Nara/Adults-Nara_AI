@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.services.llm_service import extract_tags_and_summary
 from app.services.s3_service import download_video, upload_subtitle
 from app.services.stt_service import transcribe_video, generate_vtt
+from app.services.embedding_service import generate_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +86,18 @@ def create_app() -> FastAPI:
             # 4. LLM 요약 + 태그
             llm_result = extract_tags_and_summary(settings, transcript)
 
+            # 5. 벡터 임베딩 생성 (요약 텍스트 → 1536차원)
+            embedding = generate_embedding(settings, llm_result["summary"])
+
             return {
                 "video_id": request.video_id,
-                "transcript": transcript[:500],  # 너무 길면 잘라서 반환
+                "transcript": transcript[:500],
                 "subtitle_segments_count": len(subtitle_segments),
                 "subtitle_url": subtitle_url,
                 "summary": llm_result["summary"],
                 "tags": llm_result["tags"],
+                "embedding_dim": len(embedding),
+                "embedding_preview": embedding[:5],  # 처음 5개만 미리보기
             }
         finally:
             if local_path and os.path.exists(local_path):
