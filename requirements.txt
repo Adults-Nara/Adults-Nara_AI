@@ -10,6 +10,7 @@ boto3==1.36.14
 
 # STT (Speech-to-Text)
 faster-whisper==1.1.0
+requests>=2.31.0
 
 # OpenAI (LLM + Embedding)
 openai==1.59.9
