@@ -7,9 +7,7 @@ from pydantic import BaseModel
 
 # core-api → ai-server (토픽: video-ai-analysis-requested)
 class VideoAiAnalysisRequestedEvent(BaseModel):
-    videoId: int       # 영상 ID
-    s3Bucket: str      # S3 버킷명
-    s3Key: str         # S3 객체 키 (예: "videos/123/source/source.mp4")
+    videoId: int       # 영상 ID (S3 경로: videos/{videoId}/source/source.mp4)
 
 
 # ai-server → core-api (토픽: video-ai-analysis-completed)

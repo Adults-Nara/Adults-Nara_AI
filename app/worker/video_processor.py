@@ -18,26 +18,17 @@ from app.services.embedding_service import generate_embedding
 logger = logging.getLogger(__name__)
 
 
+# AI 영상 분석 파이프라인
 async def process_video(
     event: VideoAiAnalysisRequestedEvent,
     settings: Settings,
     producer: KafkaProducerService,
 ):
     """
-    AI 영상 분석 파이프라인
-
     Args:
         event: core-api가 발행한 분석 요청 이벤트
         settings: 환경변수 설정
-        producer: Kafka Producer (결과 발행용)
-
-    파이프라인:
-        ① S3 영상 다운로드
-        ② STT 음성 추출 (faster-whisper)
-        ③ 자막 VTT 생성 + S3 업로드
-        ④ 텍스트 요약 + 태그 추출 (GPT-4o-mini)
-        ⑤ 벡터 임베딩 생성 (text-embedding-3-small)
-        ⑥ 결과를 Kafka로 발행 (video-ai-analysis-completed)
+        producer: Kafka Producer
     """
     video_id = event.videoId
     local_path = None
@@ -45,26 +36,27 @@ async def process_video(
     try:
         logger.info(f"[{video_id}] ── 파이프라인 시작 ──")
 
-        # ① S3에서 영상 다운로드
-        local_path = download_video(settings, event.s3Bucket, event.s3Key, video_id)
+        # 1. S3에서 영상 다운로드 (경로 규칙: videos/{videoId}/source/source.mp4)
+        s3_key = f"videos/{video_id}/source/source.mp4"
+        local_path = download_video(settings, settings.s3_bucket_name, s3_key, video_id)
 
-        # ② STT 음성 추출
+        # 2. STT 음성 추출
         transcript, subtitle_segments = transcribe_video(settings, local_path)
         if not transcript.strip():
             transcript = "(음성 없음)"
             logger.warning(f"[{video_id}] 음성이 감지되지 않음")
 
-        # ③ 자막 VTT 생성 + S3 업로드
+        # 3. 자막 VTT 생성 + S3 업로드
         vtt_content = generate_vtt(subtitle_segments)
         subtitle_url = upload_subtitle(settings, vtt_content, video_id)
 
-        # ④ 텍스트 요약 + 태그 추출
+        # 4. 텍스트 요약 + 태그 추출
         llm_result = extract_tags_and_summary(settings, transcript)
 
-        # ⑤ 벡터 임베딩 생성 (요약 텍스트 → 1536차원)
+        # 5. 벡터 임베딩 생성 (요약 텍스트 → 384차원)
         embedding = generate_embedding(settings, llm_result["summary"])
 
-        # ⑥ 성공 결과를 Kafka로 발행
+        # 6. 성공 결과를 Kafka로 발행
         await producer.send_result(VideoAiAnalysisCompletedEvent(
             videoId=video_id,
             status="COMPLETED",
