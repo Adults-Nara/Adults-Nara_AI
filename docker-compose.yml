@@ -1,6 +1,6 @@
 services:
   ai-server:
-    build: .
+    image: 536181645646.dkr.ecr.ap-northeast-2.amazonaws.com/asn/ai-server:latest
     container_name: asn-ai-server
     restart: always
     ports:
