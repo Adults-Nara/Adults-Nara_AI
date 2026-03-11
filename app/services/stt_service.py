@@ -61,20 +61,26 @@ def transcribe_video(settings: Settings, video_path: str) -> tuple[str, list[dic
     transcript_parts = []
     subtitle_segments = []
 
-    for seg in segments:
-        # 환각 방지: 음성이 없는(BGM/노이즈) 구간 필터링
-        if seg.no_speech_prob >= 0.7:
-            logger.debug(
-                f"세그먼트 무시 (no_speech_prob={seg.no_speech_prob:.2f}): {seg.text}"
-            )
-            continue
+    try:
+        for seg in segments:
+            # 환각 방지: 음성이 없는(BGM/노이즈) 구간 필터링
+            if seg.no_speech_prob >= 0.7:
+                logger.debug(
+                    f"세그먼트 무시 (no_speech_prob={seg.no_speech_prob:.2f}): {seg.text}"
+                )
+                continue
 
-        transcript_parts.append(seg.text)
-        subtitle_segments.append({
-            "start": seg.start,  # 시작 시간 (초)
-            "end": seg.end,      # 끝 시간 (초)
-            "text": seg.text.strip(),
-        })
+            transcript_parts.append(seg.text)
+            subtitle_segments.append({
+                "start": seg.start,  # 시작 시간 (초)
+                "end": seg.end,      # 끝 시간 (초)
+                "text": seg.text.strip(),
+            })
+    except IndexError as e:
+        # faster-whisper(내부 PyAV)가 오디오 트랙이 없는 영상(무음)을 디코딩하려 할 때 발생하는 에러 방어
+        logger.warning(f"영상에 오디오 트랙이 없거나 손상되었습니다 (무음 처리): {e}")
+    except Exception as e:
+        logger.error(f"STT 처리 중 에러 발생 (무음 처리): {e}", exc_info=True)
 
     full_transcript = " ".join(transcript_parts)
     logger.info(
