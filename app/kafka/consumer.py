@@ -41,7 +41,13 @@ class KafkaConsumerService:
             enable_auto_commit=False,
         )
 
-        await self._consumer.start()
+        try:
+            await self._consumer.start()
+        except Exception as e:
+            logger.error(f"❌ Consumer 시작 실패 (Kafka 연결 에러 등): {e}", exc_info=True)
+            self._running = False
+            return
+
         self._running = True
         logger.info(
             f"Kafka Consumer 시작 — 토픽: {self._settings.kafka_topic_request}, "
