@@ -40,8 +40,9 @@ jobs:
             --parameters commands='[
               "aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin '"$ECR_REGISTRY"'",
               "cd /home/ec2-user/asn-ai-server",
+              "docker compose down",
+              "docker image prune -a -f",
               "docker compose pull",
-              "docker compose up -d --force-recreate",
-              "docker image prune -f"
+              "docker compose up -d"
             ]' \
             --timeout-seconds 300
