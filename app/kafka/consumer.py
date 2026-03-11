@@ -35,7 +35,8 @@ class KafkaConsumerService:
             self._settings.kafka_topic_request,
             bootstrap_servers=self._settings.kafka_bootstrap_servers,
             group_id=self._settings.kafka_consumer_group,
-            value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+            # value_deserializer에서 파싱 에러가 나면 Consumer 태스크가 죽어버리므로, 순수 bytes로 받아서 루프 내부에서 파싱
+            value_deserializer=lambda m: m, 
             auto_offset_reset="earliest",
             enable_auto_commit=False,
         )
@@ -52,8 +53,18 @@ class KafkaConsumerService:
                 if not self._running:
                     break
                 try:
-                    # JSON → DTO 변환
-                    event = VideoAiAnalysisRequestedEvent(**msg.value)
+                    # 1. raw bytes → JSON 파싱
+                    try:
+                        raw_value = msg.value.decode("utf-8")
+                        parsed_value = json.loads(raw_value)
+                    except Exception as json_err:
+                        logger.error(f"❌ JSON 파싱 실패 (메시지 무시): {json_err}, 원본: {msg.value}")
+                        # 파싱 실패한 불량 메시지도 다시 읽지 않도록 커밋
+                        await self._consumer.commit()
+                        continue
+
+                    # 2. JSON → DTO 변환
+                    event = VideoAiAnalysisRequestedEvent(**parsed_value)
                     logger.info(f"📩 메시지 수신 — videoId: {event.videoId}")
 
                     # 전체 파이프라인 실행 (S3 → STT → VTT → LLM → 임베딩 → Kafka 발행)
