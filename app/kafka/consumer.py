@@ -39,6 +39,9 @@ class KafkaConsumerService:
             value_deserializer=lambda m: m, 
             auto_offset_reset="earliest",
             enable_auto_commit=False,
+            session_timeout_ms=self._settings.kafka_session_timeout_ms,
+            heartbeat_interval_ms=self._settings.kafka_heartbeat_interval_ms,
+            max_poll_interval_ms=self._settings.kafka_max_poll_interval_ms,
         )
 
         try:

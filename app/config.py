@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     kafka_consumer_group: str = "ai-video-processor"
     kafka_topic_request: str = "video-ai-analysis-requested"
     kafka_topic_result: str = "video-ai-analysis-completed"
+    kafka_session_timeout_ms: int = 300000      # 5분 (기본 10초)
+    kafka_heartbeat_interval_ms: int = 10000    # 10초 (기본 3초)
+    kafka_max_poll_interval_ms: int = 600000    # 10분 (기본 5분)
 
     # ── AWS S3 ──
     s3_bucket_name: str = "asn-s3-bucket"
